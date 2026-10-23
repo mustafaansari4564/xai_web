@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explainable Linguistic Patterns</title>
+<style>
+:root{
+  --bg:#f6f7f9; --card:#fff; --text:#1c2230; --muted:#667085; --line:#e4e7ec;
+  --pos:#1f9d55; --neg:#d64545; --accent:#3b5bdb;
+  --pos-rgb:31,157,85; --neg-rgb:214,69,69;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#10131a; --card:#181c26; --text:#e8ebf2; --muted:#98a2b3; --line:#2a3040;
+        --pos:#3ecf7a; --neg:#ff6b6b; --accent:#7c93ff; --pos-rgb:62,207,122; --neg-rgb:255,107,107}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:28px 16px 60px}
+h1{font-size:1.7rem;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0 0 22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+h2{font-size:1.05rem;margin:0 0 12px}
+textarea{width:100%;min-height:84px;resize:vertical;border:1px solid var(--line);border-radius:10px;
+  padding:12px;font:inherit;background:var(--bg);color:var(--text)}
+textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+button{font:inherit;border:0;border-radius:10px;padding:10px 20px;cursor:pointer;background:var(--accent);
+  color:#fff;font-weight:600}
+button:disabled{opacity:.6;cursor:wait}
+.chip{background:var(--bg);color:var(--text);border:1px solid var(--line);font-weight:400;
+  padding:6px 12px;font-size:.85rem;border-radius:999px}
+.chip:hover{border-color:var(--accent)}
+.err{color:var(--neg);margin-top:8px;min-height:1.2em}
+#out{display:none}
+.verdict{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pill{font-weight:700;padding:6px 16px;border-radius:999px;color:#fff}
+.pill.POSITIVE{background:var(--pos)} .pill.NEGATIVE{background:var(--neg)} .pill.UNCERTAIN{background:var(--muted)}
+.bar{flex:1;min-width:160px;height:10px;border-radius:6px;background:var(--line);overflow:hidden}
+.bar>i{display:block;height:100%}
+.tokens{font-size:1.25rem;line-height:2.4;margin:6px 0 4px}
+.tok{padding:3px 7px;border-radius:7px;margin-right:3px;cursor:help;display:inline-block;line-height:1.5}
+.tok.neg-scope{border-bottom:2px dashed #e8590c}
+.legend{color:var(--muted);font-size:.82rem;display:flex;gap:14px;flex-wrap:wrap;margin-top:6px}
+.sw{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+.badge{display:inline-block;color:#fff;border-radius:999px;padding:2px 11px;font-size:.78rem;margin:3px 5px 3px 0}
+.notes{margin:10px 0 0;padding-left:18px}
+.notes li{margin:6px 0}
+.infl{display:grid;grid-template-columns:110px 1fr 58px;gap:6px 10px;align-items:center;font-size:.92rem}
+.track{position:relative;height:14px;background:var(--bg);border-radius:4px}
+.track::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--muted)}
+.fill{position:absolute;top:0;height:100%;border-radius:4px}
+.num{color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:640px){.grid2{grid-template-columns:1fr}.infl{grid-template-columns:80px 1fr 52px}}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+td{padding:4px 6px;border-bottom:1px solid var(--line)} td:last-child{text-align:right;color:var(--muted)}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.stat{flex:1;min-width:120px;background:var(--bg);border-radius:10px;padding:10px 12px}
+.stat b{display:block;font-size:1.3rem}.stat span{color:var(--muted);font-size:.8rem}
+details summary{cursor:pointer;font-weight:600}
+code{background:var(--bg);padding:1px 6px;border-radius:5px;font-size:.88em}
+.muted{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Explainable AI for Linguistic Pattern Detection</h1>
+  <p class="sub">Type a sentence. The model predicts its polarity and shows <b>why</b>, including negation, contrast, intensifiers and hedges. Built from scratch (NumPy only).</p>
+
+  <div class="card">
+    <textarea id="text" maxlength="400" placeholder="e.g. The food was not good, but the service was great!"></textarea>
+    <div class="row">
+      <button id="go">Explain</button>
+      <span class="muted" style="font-size:.85rem">Try:</span>
+      <span id="examples" data-ex='{{ examples|tojson|forceescape }}'></span>
+    </div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div id="out">
+    <div class="card">
+      <h2>Prediction</h2>
+      <div class="verdict">
+        <span class="pill" id="pill"></span>
+        <div class="bar"><i id="barfill"></i></div>
+        <span id="conf" class="muted"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Word-level explanation</h2>
+      <div class="tokens" id="tokens"></div>
+      <div class="legend">
+        <span><i class="sw" style="background:rgba(var(--pos-rgb),.6)"></i>pushes positive</span>
+        <span><i class="sw" style="background:rgba(var(--neg-rgb),.6)"></i>pushes negative</span>
+        <span><i class="sw" style="border-bottom:2px dashed #e8590c;border-radius:0;height:9px"></i>inside negation scope</span>
+        <span>hover a word for exact numbers</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Linguistic patterns detected</h2>
+      <div id="badges"></div>
+      <ul class="notes" id="notes"></ul>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>Occlusion test</h2>
+        <p class="muted" style="margin:0 0 10px;font-size:.85rem">Change in P(positive) when each word is deleted. Bigger bar means the word matters more.</p>
+        <div class="infl" id="occl"></div>
+      </div>
+      <div class="card">
+        <h2>Top contributing features</h2>
+        <table id="feats"></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>About the model</h2>
+    <div class="stats" id="stats"></div>
+    <div class="grid2">
+      <div><b>Most positive features</b><table id="gpos"></table></div>
+      <div><b>Most negative features</b><table id="gneg"></table></div>
+    </div>
+    <p class="muted" style="font-size:.82rem;margin-bottom:0">
+      Features starting with <code>[neg]</code> mean the word occurs inside a negation scope,
+      <code>[final]</code> means the clause after "but/however", <code>[pre]</code> the clause before it.
+      Trained on synthetic template sentences, so it is a demonstration of explainability, not a production sentiment model.</p>
+  </div>
+</div>
+
+{% raw %}
+<script>
+const COLORS = {negation:"#d9480f",intensifier:"#7048e8",hedge:"#868e96",contrast:"#1c7ed6",
+                modal:"#0b7285",first_person:"#5c940d",question:"#c2255c",exclamation:"#e67700"};
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const sgn = v => (v >= 0 ? "+" : "") + v.toFixed(3);
+
+// example chips
+let examples = [];
+try { examples = JSON.parse($("examples").dataset.ex); } catch(e) {}
+examples.forEach(t => {
+  const b = document.createElement("button");
+  b.className = "chip"; b.textContent = t;
+  b.onclick = () => { $("text").value = t; run(); };
+  $("examples").appendChild(b);
+});
+
+async function run() {
+  const text = $("text").value.trim();
+  $("err").textContent = "";
+  if (!text) { $("err").textContent = "Please enter a sentence."; return; }
+  $("go").disabled = true;
+  try {
+    const r = await fetch("/api/explain", {method:"POST", headers:{"Content-Type":"application/json"},
+                                           body: JSON.stringify({text})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Request failed");
+    render(d);
+  } catch (e) { $("err").textContent = e.message; }
+  $("go").disabled = false;
+}
+
+function render(d) {
+  $("out").style.display = "block";
+  $("pill").textContent = d.label; $("pill").className = "pill " + d.label;
+  $("conf").textContent = (d.confidence*100).toFixed(1) + "% confident  |  P(positive) = " + d.prob_pos.toFixed(3);
+  $("barfill").style.width = (d.prob_pos*100) + "%";
+  $("barfill").style.background = d.label === "POSITIVE" ? "var(--pos)" : d.label === "NEGATIVE" ? "var(--neg)" : "var(--muted)";
+  if (d.label === "UNCERTAIN") $("conf").textContent = "No words the model knows, so this is just the 50/50 baseline.";
+
+  const inNeg = new Set(); const patAt = {};
+  d.patterns.forEach(p => { if (p.type === "negation") p.scope.forEach(j => inNeg.add(j)); patAt[p.start] = p.type; });
+  const mx = Math.max(1e-9, ...d.tokens.map(t => Math.abs(t.score)));
+  $("tokens").innerHTML = d.tokens.map((t, i) => {
+    const a = Math.min(1, Math.abs(t.score)/mx) * 0.7;
+    const rgb = t.score >= 0 ? "var(--pos-rgb)" : "var(--neg-rgb)";
+    let style = "background:rgba(" + rgb + "," + a.toFixed(2) + ");";
+    let tip = "score " + sgn(t.score) + " | occlusion " + sgn(t.occl);
+    if (patAt[i]) { style += "outline:2px solid " + COLORS[patAt[i]] + ";"; tip += " | pattern: " + patAt[i]; }
+    return '<span class="tok' + (inNeg.has(i) ? " neg-scope" : "") + '" style="' + style +
+           '" title="' + esc(tip) + '">' + esc(t.t) + "</span>";
+  }).join(" ");
+
+  $("badges").innerHTML = d.patterns.length
+    ? d.patterns.map(p => '<span class="badge" style="background:' + COLORS[p.type] + '" title="' + esc(p.desc) +
+        '">' + p.type.replace("_"," ") + ": " + esc(p.text) + "</span>").join("")
+    : '<span class="muted">No special patterns found.</span>';
+  $("notes").innerHTML = d.notes.map(n => "<li>" + esc(n) + "</li>").join("");
+
+  const real = d.tokens.filter(t => !",.;".includes(t.t));
+  const om = Math.max(1e-9, ...real.map(t => Math.abs(t.occl)));
+  $("occl").innerHTML = real.map(t => {
+    const w = Math.abs(t.occl)/om*50;
+    const pos = t.occl >= 0;
+    return "<span>" + esc(t.t) + '</span><div class="track"><div class="fill" style="' +
+      (pos ? "left:50%;" : "right:50%;") + "width:" + w + "%;background:" + (pos ? "var(--pos)" : "var(--neg)") +
+      '"></div></div><span class="num">' + sgn(t.occl) + "</span>";
+  }).join("");
+
+  $("feats").innerHTML = d.features.map(f =>
+    "<tr><td>" + esc(f.f) + "</td><td>" + sgn(f.c) + "</td></tr>").join("");
+  $("out").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+async function loadModel() {
+  try {
+    const m = await (await fetch("/api/model")).json();
+    const pc = v => (v*100).toFixed(1) + "%";
+    $("stats").innerHTML = [
+      [pc(m.accuracy), "test accuracy"], [m.f1.toFixed(3), "F1 score"],
+      [m.sanity_accuracy === 1 ? "12/12" : pc(m.sanity_accuracy), "hand-written sanity set"],
+      [m.faithfulness.top_tokens.toFixed(2) + " vs " + m.faithfulness.random_tokens.toFixed(2), "faithfulness (explained vs random)"],
+    ].map(s => '<div class="stat"><b>' + s[0] + "</b><span>" + s[1] + "</span></div>").join("");
+    const rows = l => l.map(x => "<tr><td>" + esc(x.f) + "</td><td>" + (x.w>=0?"+":"") + x.w.toFixed(1) + "</td></tr>").join("");
+    $("gpos").innerHTML = rows(m.top_positive.slice(0,8));
+    $("gneg").innerHTML = rows(m.top_negative.slice(0,8));
+  } catch(e) {}
+}
+
+$("go").onclick = run;
+$("text").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) run(); });
+loadModel();
+</script>
+{% endraw %}
+</body>
+</html>
